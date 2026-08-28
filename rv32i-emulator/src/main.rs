@@ -26,6 +26,13 @@ fn get_funct7(instruction: u32) -> u32 {
     return instruction >> 25;
 }
 
+fn get_b_type_imm(instruction: u32) -> u32 {
+    return (((instruction >> 8) & 0b1111) << 1)
+        | (((instruction >> 7) & 0b1) << 11)
+        | (((instruction >> 25) & 0b111111) << 5)
+        | ((instruction >> 31) << 12);
+}
+
 fn set_register(index: usize, registers: &mut [u32; 32], value: u32) {
     match index {
         0 => {}
@@ -36,6 +43,10 @@ fn set_register(index: usize, registers: &mut [u32; 32], value: u32) {
 
 fn sign_extend_12(unsigned_12: u32) -> u32 {
     return (((unsigned_12 << 20) as i32) >> 20) as u32;
+}
+
+fn sign_extend_13(unsigned_13: u32) -> u32 {
+    return (((unsigned_13 << 19) as i32) >> 19) as u32;
 }
 
 fn addi(rd: usize, rs1: usize, imm: u32, registers: &mut [u32; 32]) {
@@ -102,6 +113,26 @@ fn sra(rd: usize, rs1: usize, rs2: usize, registers: &mut [u32; 32]) {
     );
 }
 
+fn beq(rs1: usize, rs2: usize, imm: u32, registers: &[u32; 32], pc: &mut u32) {
+    println!("[BEQ] rs1: {:#X}, rs2: {:#X}, imm: {:#X}", rs1, rs2, imm);
+    let extended_imm: u32 = sign_extend_13(imm);
+    if registers[rs1] == registers[rs2] {
+        *pc = pc.wrapping_add(extended_imm);
+    } else {
+        *pc = pc.wrapping_add(4);
+    }
+}
+
+fn bne(rs1: usize, rs2: usize, imm: u32, registers: &[u32; 32], pc: &mut u32) {
+    println!("[BNE] rs1: {:#X}, rs2: {:#X}, imm: {:#X}", rs1, rs2, imm);
+    let extended_imm: u32 = sign_extend_13(imm);
+    if registers[rs1] != registers[rs2] {
+        *pc = pc.wrapping_add(extended_imm);
+    } else {
+        *pc = pc.wrapping_add(4);
+    }
+}
+
 fn execute_instruction(instruction: u32, registers: &mut [u32; 32], pc: &mut u32) {
     println!("instruction: {:#X}", instruction);
     let opcode = get_opcode(instruction);
@@ -111,47 +142,59 @@ fn execute_instruction(instruction: u32, registers: &mut [u32; 32], pc: &mut u32
     let imm = get_imm(instruction);
     let rs2 = get_rs2(instruction);
     let funct7 = get_funct7(instruction);
+    let b_type_imm = get_b_type_imm(instruction);
 
     match opcode {
-        0b0010011 => match funct3 {
-            0b000 => addi(rd, rs1, imm, registers),
-            _ => panic!("unsupported funct3"),
-        },
-        0b0110011 => match funct3 {
-            0b000 => match funct7 {
-                0b0000000 => add(rd, rs1, rs2, registers),
-                0b0100000 => sub(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
-            0b100 => match funct7 {
-                0b0000000 => xor(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
-            0b110 => match funct7 {
-                0b0000000 => or(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
-            0b111 => match funct7 {
-                0b0000000 => and(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
-            0b010 => match funct7 {
-                0b0000000 => slt(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
-            0b011 => match funct7 {
-                0b0000000 => sltu(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
-            0b001 => match funct7 {
-                0b0000000 => sll(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
-            0b101 => match funct7 {
-                0b0000000 => srl(rd, rs1, rs2, registers),
-                0b0100000 => sra(rd, rs1, rs2, registers),
-                _ => panic!("unsupported funct7"),
-            },
+        0b0010011 => {
+            match funct3 {
+                0b000 => addi(rd, rs1, imm, registers),
+                _ => panic!("unsupported funct3"),
+            }
+            *pc = pc.wrapping_add(4);
+        }
+        0b0110011 => {
+            match funct3 {
+                0b000 => match funct7 {
+                    0b0000000 => add(rd, rs1, rs2, registers),
+                    0b0100000 => sub(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                0b100 => match funct7 {
+                    0b0000000 => xor(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                0b110 => match funct7 {
+                    0b0000000 => or(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                0b111 => match funct7 {
+                    0b0000000 => and(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                0b010 => match funct7 {
+                    0b0000000 => slt(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                0b011 => match funct7 {
+                    0b0000000 => sltu(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                0b001 => match funct7 {
+                    0b0000000 => sll(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                0b101 => match funct7 {
+                    0b0000000 => srl(rd, rs1, rs2, registers),
+                    0b0100000 => sra(rd, rs1, rs2, registers),
+                    _ => panic!("unsupported funct7"),
+                },
+                _ => panic!("unsupported funct3"),
+            }
+            *pc = pc.wrapping_add(4);
+        }
+        0b1100011 => match funct3 {
+            0b000 => beq(rs1, rs2, b_type_imm, registers, pc),
+            0b001 => bne(rs1, rs2, b_type_imm, registers, pc),
             _ => panic!("unsupported funct3"),
         },
         _ => panic!("unsupported opcode"),
@@ -184,7 +227,6 @@ impl Emulator {
     fn next(&mut self) {
         let instruction = self.fetch_instruction();
         self.execute(instruction);
-        self.pc += 4;
     }
 
     fn execute(&mut self, instruction: u32) {
@@ -560,5 +602,146 @@ mod tests {
         emulator.next();
 
         assert_eq!(emulator.registers[3], 4);
+    }
+
+    #[test]
+    fn beq_branches_when_registers_are_equal() {
+        let mut emulator = Emulator::new();
+
+        // addi x1, x0, 5
+        emulator.memory[0..4].copy_from_slice(&[0x93, 0x00, 0x50, 0x00]);
+
+        // addi x2, x0, 5
+        emulator.memory[4..8].copy_from_slice(&[0x13, 0x01, 0x50, 0x00]);
+
+        // beq x1, x2, 8
+        emulator.memory[8..12].copy_from_slice(&[0x63, 0x84, 0x20, 0x00]);
+
+        // addi x3, x0, 111
+        emulator.memory[12..16].copy_from_slice(&[0x93, 0x01, 0xF0, 0x06]);
+
+        // addi x3, x0, 222
+        emulator.memory[16..20].copy_from_slice(&[0x93, 0x01, 0xE0, 0x0D]);
+
+        emulator.next();
+        emulator.next();
+        emulator.next();
+
+        assert_eq!(emulator.pc, 16);
+        assert_eq!(emulator.registers[3], 0);
+
+        emulator.next();
+
+        assert_eq!(emulator.registers[3], 222);
+        assert_eq!(emulator.pc, 20);
+    }
+
+    #[test]
+    fn beq_continues_to_next_instruction_when_registers_are_not_equal() {
+        let mut emulator = Emulator::new();
+
+        // addi x1, x0, 5
+        emulator.memory[0..4].copy_from_slice(&[0x93, 0x00, 0x50, 0x00]);
+
+        // addi x2, x0, 6
+        emulator.memory[4..8].copy_from_slice(&[0x13, 0x01, 0x60, 0x00]);
+
+        // beq x1, x2, 8
+        emulator.memory[8..12].copy_from_slice(&[0x63, 0x84, 0x20, 0x00]);
+
+        // addi x3, x0, 111
+        emulator.memory[12..16].copy_from_slice(&[0x93, 0x01, 0xF0, 0x06]);
+
+        emulator.next();
+        emulator.next();
+        emulator.next();
+
+        assert_eq!(emulator.pc, 12);
+
+        emulator.next();
+
+        assert_eq!(emulator.registers[3], 111);
+        assert_eq!(emulator.pc, 16);
+    }
+
+    #[test]
+    fn beq_can_branch_backward() {
+        let mut emulator = Emulator::new();
+
+        emulator.registers[1] = 123;
+        emulator.registers[2] = 123;
+
+        // beq x1, x2, -4
+        emulator.memory[4..8].copy_from_slice(&[0xE3, 0x8E, 0x20, 0xFE]);
+
+        emulator.pc = 4;
+
+        emulator.next();
+
+        assert_eq!(emulator.pc, 0);
+    }
+
+    #[test]
+    fn beq_can_branch_backward_by_eight_bytes() {
+        let mut emulator = Emulator::new();
+
+        emulator.registers[1] = 42;
+        emulator.registers[2] = 42;
+
+        emulator.pc = 12;
+
+        // beq x1, x2, -8
+        emulator.memory[12..16].copy_from_slice(&[0xE3, 0x8C, 0x20, 0xFE]);
+
+        emulator.next();
+
+        assert_eq!(emulator.pc, 4);
+    }
+
+    #[test]
+    fn bne_branches_when_registers_are_not_equal() {
+        let mut emulator = Emulator::new();
+
+        emulator.registers[1] = 10;
+        emulator.registers[2] = 20;
+
+        // bne x1, x2, +8
+        emulator.memory[0..4].copy_from_slice(&[0x63, 0x94, 0x20, 0x00]);
+
+        emulator.next();
+
+        assert_eq!(emulator.pc, 8);
+    }
+
+    #[test]
+    fn bne_continues_when_registers_are_equal() {
+        let mut emulator = Emulator::new();
+
+        emulator.registers[1] = 10;
+        emulator.registers[2] = 10;
+
+        // bne x1, x2, +8
+        emulator.memory[0..4].copy_from_slice(&[0x63, 0x94, 0x20, 0x00]);
+
+        emulator.next();
+
+        assert_eq!(emulator.pc, 4);
+    }
+
+    #[test]
+    fn bne_can_branch_backward() {
+        let mut emulator = Emulator::new();
+
+        emulator.registers[1] = 10;
+        emulator.registers[2] = 20;
+
+        emulator.pc = 12;
+
+        // bne x1, x2, -8
+        emulator.memory[12..16].copy_from_slice(&[0xE3, 0x9C, 0x20, 0xFE]);
+
+        emulator.next();
+
+        assert_eq!(emulator.pc, 4);
     }
 }
