@@ -1,3 +1,5 @@
+mod assembler;
+
 fn get_opcode(instruction: u32) -> u32 {
     return instruction & 0b1111111;
 }
